@@ -1,0 +1,26 @@
+package commands
+
+import (
+	"app/di"
+	"github.com/mix-go/xcli"
+	"go.uber.org/zap"
+	"time"
+)
+
+type TestCommand struct {
+}
+
+func (t *TestCommand) Main() {
+	di.Logrus().Debug("ssssssssssssssssss")
+	di.Zap().Debugw("ttttttttttttttt", zap.Duration("test", time.Second))
+}
+
+func init() {
+	testCommand := xcli.Command{
+		Name:    "test",
+		Short:   "",
+		Options: []*xcli.Option{},
+		RunI:    &TestCommand{},
+	}
+	Commands = append(Commands, &testCommand)
+}
