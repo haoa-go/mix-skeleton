@@ -1,6 +1,7 @@
 package di
 
 import (
+	"app/common/context"
 	"fmt"
 	"github.com/mix-go/xcli"
 	"github.com/mix-go/xdi"
@@ -89,6 +90,14 @@ func Zap() (logger *zap.SugaredLogger) {
 		panic(err)
 	}
 	return
+}
+
+func ZapWithContext(ctx context.LogContextInterface) *zap.SugaredLogger {
+	logArgs := ctx.GetLogArgs()
+	if len(logArgs) > 0 {
+		return Zap().With(logArgs...)
+	}
+	return Zap()
 }
 
 type ZapOutput struct {

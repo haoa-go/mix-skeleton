@@ -46,7 +46,7 @@ func Sentry() (s *SentryHelper) {
 type SentryHelper struct {
 }
 
-func (t *SentryHelper) RecoverHandle(err any) {
+func (t *SentryHelper) ErrHandle(err any) {
 	if viper.GetString("sentry-dsn") == "" {
 		return
 	}
@@ -60,8 +60,8 @@ func (t *SentryHelper) RecoverHandle(err any) {
 	localHub.Flush(time.Second * 2)
 }
 
-func (t *SentryHelper) Recover() {
+func (t *SentryHelper) RecoverHandle() {
 	if err := recover(); err != nil {
-		t.RecoverHandle(err)
+		t.ErrHandle(err)
 	}
 }
