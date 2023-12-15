@@ -21,9 +21,9 @@ var Commands = []*xcli.Command{
 		RunI: &APICommand{},
 	},
 	{
-		Name:    "jsonRpc",
+		Name:    "jsonRpcServer",
 		Short:   "\tStart the json-rpc server",
 		Options: []*xcli.Option{},
-		RunI:    &JsonRpcCommand{},
+		RunI:    &JsonRpcServerCommand{},
 	},
 }

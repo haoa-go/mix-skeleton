@@ -6,7 +6,7 @@ import (
 	"app/common/log"
 	"app/di"
 	"app/exception"
-	"app/service"
+	"app/rpc"
 	"bufio"
 	"bytes"
 	"encoding/binary"
@@ -387,7 +387,7 @@ func (t *JsonRpcServer) callMethod(serviceName string, callStr string, obj any, 
 
 func (t *JsonRpcServer) Test(msg string) {
 	server := NewJsonRpcServer()
-	server.Register("Hello", &service.HelloService{})
+	server.Register("Hello", &rpc.HelloRpc{})
 	ctx := context2.NewRunContext()
 	fmt.Println(server.dispatch(ctx, []byte(msg)))
 }

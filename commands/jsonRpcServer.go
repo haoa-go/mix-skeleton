@@ -1,17 +1,17 @@
 package commands
 
 import (
+	"app/rpc"
 	"app/server/jsonRpc"
-	"app/service"
 	"github.com/mix-go/xcli/flag"
 	"github.com/mix-go/xcli/process"
 	"github.com/mix-go/xutil/xenv"
 )
 
-type JsonRpcCommand struct {
+type JsonRpcServerCommand struct {
 }
 
-func (t *JsonRpcCommand) Main() {
+func (t *JsonRpcServerCommand) Main() {
 	if flag.Match("d", "daemon").Bool() {
 		process.Daemon()
 	}
@@ -20,7 +20,7 @@ func (t *JsonRpcCommand) Main() {
 	network := xenv.Getenv("JSON_RPC_NETWORK").String("tcp")
 
 	server := jsonRpc.NewJsonRpcServer()
-	server.Register("Hello", &service.HelloService{})
+	server.Register("Hello", &rpc.HelloRpc{})
 
 	welcome("mix-json-rpc", addr)
 	server.Run(addr, network)
