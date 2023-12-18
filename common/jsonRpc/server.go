@@ -2,7 +2,7 @@ package jsonRpc
 
 import (
 	context2 "app/common/context"
-	"app/common/jsonRpcHelper"
+	"app/common/jsonRpc/helper"
 	"app/common/log"
 	"app/di"
 	"app/exception"
@@ -24,21 +24,21 @@ const (
 	fieldRequestId = "requestId"
 )
 
-type JsonRpcServer struct {
+type Server struct {
 	serviceMap     map[string]any
 	structValueMap map[string]reflect.Value
 	callValueMap   map[string]reflect.Value
 }
 
-func NewJsonRpcServer() *JsonRpcServer {
-	return &JsonRpcServer{
+func NewServer() *Server {
+	return &Server{
 		serviceMap:     make(map[string]any),
 		structValueMap: make(map[string]reflect.Value),
 		callValueMap:   make(map[string]reflect.Value),
 	}
 }
 
-func (t *JsonRpcServer) Run(addr string, network string) {
+func (t *Server) Run(addr string, network string) {
 	if network == "unix" {
 		removeErr := os.Remove(addr)
 		if removeErr != nil && !strings.Contains(removeErr.Error(), "no such file or directory") {
@@ -80,11 +80,11 @@ func (t *JsonRpcServer) Run(addr string, network string) {
 	}
 }
 
-func (t *JsonRpcServer) Register(name string, obj any) {
+func (t *Server) Register(name string, obj any) {
 	t.serviceMap[name] = obj
 }
 
-func (t *JsonRpcServer) handler(conn net.Conn) {
+func (t *Server) handler(conn net.Conn) {
 	defer log.RecoverHandle()
 	reader := bufio.NewReader(conn)
 
@@ -112,7 +112,7 @@ func (t *JsonRpcServer) handler(conn net.Conn) {
 	}
 }
 
-func (t *JsonRpcServer) packHandle(conn net.Conn, received []byte) {
+func (t *Server) packHandle(conn net.Conn, received []byte) {
 	ctx := context2.NewRunContext()
 	defer func() {
 		ctx.Clear()
@@ -127,7 +127,7 @@ func (t *JsonRpcServer) packHandle(conn net.Conn, received []byte) {
 	}
 }
 
-func (t *JsonRpcServer) unpack(reader *bufio.Reader) ([]byte, error) {
+func (t *Server) unpack(reader *bufio.Reader) ([]byte, error) {
 	// 读取数据长度
 	lenBuf := make([]byte, 4)
 	_, err := reader.Read(lenBuf)
@@ -150,7 +150,7 @@ func (t *JsonRpcServer) unpack(reader *bufio.Reader) ([]byte, error) {
 }
 
 // 数据解析
-func (t *JsonRpcServer) unpack2(reader *bufio.Reader) (string, error) {
+func (t *Server) unpack2(reader *bufio.Reader) (string, error) {
 	// 对字符串截取，长度数据
 	lenByte, _ := reader.Peek(4)
 	lengthBuff := bytes.NewBuffer(lenByte) // 建立缓冲区对数据进行读取
@@ -180,7 +180,7 @@ func (t *JsonRpcServer) unpack2(reader *bufio.Reader) (string, error) {
 	return string(pack[4:]), nil
 }
 
-func (t *JsonRpcServer) recoverHandle(ctx *context2.RunContext, conn net.Conn) {
+func (t *Server) recoverHandle(ctx *context2.RunContext, conn net.Conn) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.ErrHandleWithContext(ctx, err)
@@ -202,25 +202,25 @@ func (t *JsonRpcServer) recoverHandle(ctx *context2.RunContext, conn net.Conn) {
 	switch err.(type) {
 	case exception.MsgException:
 		var ex = err.(exception.MsgException)
-		data := t.buildErrorJson(jsonRpcHelper.NewError(ex.Code, ex.Msg), id)
+		data := t.buildErrorJson(helper.NewError(ex.Code, ex.Msg), id)
 		t.sendResponse(conn, data)
 		return
 	case exception.ErrorException:
 		var ex = err.(exception.ErrorException)
 		log.ErrHandleWithContext(ctx, err)
-		data := t.buildErrorJson(jsonRpcHelper.NewError(ex.Code, ex.Msg), id)
+		data := t.buildErrorJson(helper.NewError(ex.Code, ex.Msg), id)
 		t.sendResponse(conn, data)
 		return
 	default:
 		log.ErrHandleWithContext(ctx, err)
-		data := t.buildErrorJson(jsonRpcHelper.NewError(jsonRpcHelper.CodeInternalError, ""), id)
+		data := t.buildErrorJson(helper.NewError(helper.CodeInternalError, ""), id)
 		t.sendResponse(conn, data)
 		return
 	}
 
 }
 
-func (t *JsonRpcServer) sendResponse(conn net.Conn, res []byte) {
+func (t *Server) sendResponse(conn net.Conn, res []byte) {
 	// 先将长度作为header
 	returnlenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(returnlenBuf, uint32(len(res)))
@@ -241,7 +241,7 @@ func (t *JsonRpcServer) sendResponse(conn net.Conn, res []byte) {
 	}
 }
 
-func (t *JsonRpcServer) buildErrorJson(error *jsonRpcHelper.Error, id any) []byte {
+func (t *Server) buildErrorJson(error *helper.Error, id any) []byte {
 	data := map[string]any{
 		"jsonrpc": "2.0",
 		"error":   error,
@@ -254,7 +254,7 @@ func (t *JsonRpcServer) buildErrorJson(error *jsonRpcHelper.Error, id any) []byt
 	return json
 }
 
-func (t *JsonRpcServer) buildSuccessJson(data any, id any) []byte {
+func (t *Server) buildSuccessJson(data any, id any) []byte {
 	res := map[string]any{
 		"jsonrpc": "2.0",
 		"data":    data,
@@ -267,17 +267,17 @@ func (t *JsonRpcServer) buildSuccessJson(data any, id any) []byte {
 	return json
 }
 
-func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id any, resError *jsonRpcHelper.Error, resData any) {
+func (t *Server) dispatch(ctx *context2.RunContext, received []byte) (id any, resError *helper.Error, resData any) {
 	var receivedData map[string]any
 	id = ""
 	if err := di.Json().Unmarshal(received, &receivedData); err != nil {
 		di.ZapWithContext(ctx).Debugf("json parsing error, %v", err)
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeParseError, "")
+		resError = helper.NewError(helper.CodeParseError, "")
 		return
 	}
 	if _, ok := receivedData["id"]; !ok {
 		di.ZapWithContext(ctx).Debug("undefined id")
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 
@@ -287,19 +287,19 @@ func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id 
 
 	if _, ok := receivedData["jsonrpc"]; !ok {
 		di.ZapWithContext(ctx).Debug("undefined jsonrpc")
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 
 	if receivedData["jsonrpc"] != "2.0" {
 		di.ZapWithContext(ctx).Debug("jsonrpc is not 2.0")
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 
 	if _, ok := receivedData["method"]; !ok {
 		di.ZapWithContext(ctx).Debug("method")
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 
@@ -308,14 +308,14 @@ func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id 
 
 	if len(callArr) != 2 {
 		di.ZapWithContext(ctx).Debug("method parsing error")
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 
 	var serviceName string
 	serviceName = callArr[0]
 	if _, ok := t.serviceMap[callArr[0]]; !ok {
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "")
+		resError = helper.NewError(helper.CodeInvalidRequest, "")
 		return
 	}
 	var method string
@@ -327,7 +327,7 @@ func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id 
 		if methodParams != "" && methodParams != nil {
 			var methodParamsMapOk bool
 			if methodParamsMap, methodParamsMapOk = methodParams.(map[string]any); !methodParamsMapOk {
-				resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, "params必须是对象")
+				resError = helper.NewError(helper.CodeInvalidRequest, "params必须是对象")
 				return
 			}
 		}
@@ -343,11 +343,11 @@ func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id 
 	}
 	if len(callResult) != 2 {
 		di.ZapWithContext(ctx).Errorf("result len error, result: %v", callResult)
-		resError = jsonRpcHelper.NewError(jsonRpcHelper.CodeInternalError, "")
+		resError = helper.NewError(helper.CodeInternalError, "")
 		return
 	}
 
-	resError = callResult[1].Interface().(*jsonRpcHelper.Error)
+	resError = callResult[1].Interface().(*helper.Error)
 	if resError != nil {
 		return
 	}
@@ -357,7 +357,7 @@ func (t *JsonRpcServer) dispatch(ctx *context2.RunContext, received []byte) (id 
 	return id, nil, resData
 }
 
-func (t *JsonRpcServer) callMethod(serviceName string, callStr string, obj any, funcName string, params []any) ([]reflect.Value, *jsonRpcHelper.Error) {
+func (t *Server) callMethod(serviceName string, callStr string, obj any, funcName string, params []any) ([]reflect.Value, *helper.Error) {
 	var structValue reflect.Value
 	if _, ok := t.structValueMap[serviceName]; !ok {
 		structValue = reflect.ValueOf(obj)
@@ -372,7 +372,7 @@ func (t *JsonRpcServer) callMethod(serviceName string, callStr string, obj any, 
 	} else {
 		method = structValue.MethodByName(funcName)
 		if !method.IsValid() {
-			return nil, jsonRpcHelper.NewError(jsonRpcHelper.CodeInvalidRequest, callStr+" not found")
+			return nil, helper.NewError(helper.CodeInvalidRequest, callStr+" not found")
 		}
 	}
 
@@ -385,8 +385,8 @@ func (t *JsonRpcServer) callMethod(serviceName string, callStr string, obj any, 
 	return result, nil
 }
 
-func (t *JsonRpcServer) Test(msg string) {
-	server := NewJsonRpcServer()
+func (t *Server) Test(msg string) {
+	server := NewServer()
 	server.Register("Hello", &rpc.HelloRpc{})
 	ctx := context2.NewRunContext()
 	fmt.Println(server.dispatch(ctx, []byte(msg)))

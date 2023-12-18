@@ -1,8 +1,8 @@
 package commands
 
 import (
+	"app/common/jsonRpc"
 	"app/rpc"
-	"app/server/jsonRpc"
 	"github.com/mix-go/xcli/flag"
 	"github.com/mix-go/xcli/process"
 	"github.com/mix-go/xutil/xenv"
@@ -19,7 +19,7 @@ func (t *JsonRpcServerCommand) Main() {
 	addr := xenv.Getenv("JSON_RPC_ADDR").String(":8082")
 	network := xenv.Getenv("JSON_RPC_NETWORK").String("tcp")
 
-	server := jsonRpc.NewJsonRpcServer()
+	server := jsonRpc.NewServer()
 	server.Register("Hello", &rpc.HelloRpc{})
 
 	welcome("mix-json-rpc", addr)

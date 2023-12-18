@@ -1,4 +1,4 @@
-package jsonRpcClient
+package jsonRpc
 
 import (
 	"app/di"
@@ -9,14 +9,14 @@ import (
 	"strings"
 )
 
-type JsonRpcClient struct {
+type Client struct {
 	network, address   string
 	initialCap, maxCap int
-	buildId            func() any
+	idBuilder          func() any
 	pool               pool.Pool
 }
 
-func NewJsonRpcClient(network, address string, initialCap, maxCap int, buildId func() any) *JsonRpcClient {
+func NewClient(network, address string, initialCap, maxCap int, idBuilder func() any) *Client {
 	factory := func() (net.Conn, error) {
 		return net.Dial(network, address)
 	}
@@ -24,17 +24,17 @@ func NewJsonRpcClient(network, address string, initialCap, maxCap int, buildId f
 	if err != nil {
 		panic(err)
 	}
-	return &JsonRpcClient{
+	return &Client{
 		network:    network,
 		address:    address,
 		initialCap: initialCap,
 		maxCap:     maxCap,
-		buildId:    buildId,
+		idBuilder:  idBuilder,
 		pool:       p,
 	}
 }
 
-func (t *JsonRpcClient) Call(method string, params map[string]any, readWaitTime int) (data []byte, err error) {
+func (t *Client) Call(method string, params map[string]any, readWaitTime int) (data []byte, err error) {
 	var conn net.Conn
 	var connErr error
 	conn, connErr = t.pool.Get()
@@ -46,7 +46,7 @@ func (t *JsonRpcClient) Call(method string, params map[string]any, readWaitTime 
 		"jsonrpc": "2.0",
 		"method":  method,
 		"params":  params,
-		"id":      t.buildId(),
+		"id":      t.idBuilder(),
 	}
 	json, err := di.Json().Marshal(callData)
 	if err != nil {
@@ -74,7 +74,7 @@ func (t *JsonRpcClient) Call(method string, params map[string]any, readWaitTime 
 	return data, nil
 }
 
-func (t *JsonRpcClient) sendResponse(conn net.Conn, res []byte) bool {
+func (t *Client) sendResponse(conn net.Conn, res []byte) bool {
 	// 先将长度作为header
 	returnlenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(returnlenBuf, uint32(len(res)))
@@ -100,7 +100,7 @@ func (t *JsonRpcClient) sendResponse(conn net.Conn, res []byte) bool {
 	return true
 }
 
-func (t *JsonRpcClient) read(conn net.Conn, readWaitTime int) ([]byte, error) {
+func (t *Client) read(conn net.Conn, readWaitTime int) ([]byte, error) {
 	//if readWaitTime == 0 {
 	//	readWaitTime = 5
 	//}

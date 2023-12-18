@@ -1,4 +1,4 @@
-package jsonRpcHelper
+package helper
 
 const (
 	// Parse error语法解析错误
