@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/pool"
 	"net"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -53,16 +54,16 @@ func (t *Client) Call(method string, params map[string]any, readWaitTime int) (d
 		panic(err)
 	}
 
-	send := t.sendResponse(conn, json)
-	if !send {
+	sendErr := t.sendResponse(conn, json)
+	if sendErr != nil {
 		conn, connErr = t.pool.Get()
 		if connErr != nil {
 			panic(connErr)
 		}
 		defer conn.Close()
-		send2 := t.sendResponse(conn, json)
-		if !send2 {
-			panic("send error")
+		sendErr2 := t.sendResponse(conn, json)
+		if sendErr2 != nil {
+			panic(sendErr2)
 		}
 	}
 
@@ -74,7 +75,11 @@ func (t *Client) Call(method string, params map[string]any, readWaitTime int) (d
 	return data, nil
 }
 
-func (t *Client) sendResponse(conn net.Conn, res []byte) bool {
+func (t *Client) sendResponse(conn net.Conn, res []byte) error {
+	waitTime := 5
+	if err := conn.SetWriteDeadline(time.Now().Add(time.Second * time.Duration(waitTime))); err != nil {
+		return err
+	}
 	// 先将长度作为header
 	returnlenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(returnlenBuf, uint32(len(res)))
@@ -95,17 +100,20 @@ func (t *Client) sendResponse(conn net.Conn, res []byte) bool {
 			pc.MarkUnusable()
 			pc.Close()
 		}
-		return false
+		return err
 	}
-	return true
+	return nil
 }
 
 func (t *Client) read(conn net.Conn, readWaitTime int) ([]byte, error) {
-	//if readWaitTime == 0 {
-	//	readWaitTime = 5
-	//}
-	//conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(readWaitTime)))
+	if readWaitTime == 0 {
+		readWaitTime = 5
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(readWaitTime))); err != nil {
+		panic(err)
+	}
 	reader := bufio.NewReader(conn)
+
 	// 读取数据长度
 	lenBuf := make([]byte, 4)
 	_, err := reader.Read(lenBuf)
