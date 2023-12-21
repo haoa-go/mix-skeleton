@@ -40,7 +40,7 @@ func (t *Client) Call(method string, params map[string]any, readWaitTime int) (d
 	var connErr error
 	conn, connErr = t.pool.Get()
 	if connErr != nil {
-		panic(connErr)
+		return nil, connErr
 	}
 	defer conn.Close()
 	callData := map[string]any{
@@ -51,25 +51,25 @@ func (t *Client) Call(method string, params map[string]any, readWaitTime int) (d
 	}
 	json, err := di.Json().Marshal(callData)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	sendErr := t.sendResponse(conn, json)
 	if sendErr != nil {
 		conn, connErr = t.pool.Get()
 		if connErr != nil {
-			panic(connErr)
+			return nil, connErr
 		}
 		defer conn.Close()
 		sendErr2 := t.sendResponse(conn, json)
 		if sendErr2 != nil {
-			panic(sendErr2)
+			return nil, sendErr2
 		}
 	}
 
 	data, readErr := t.read(conn, readWaitTime)
 	if readErr != nil {
-		panic(readErr)
+		return nil, readErr
 	}
 
 	return data, nil
@@ -110,7 +110,7 @@ func (t *Client) read(conn net.Conn, readWaitTime int) ([]byte, error) {
 		readWaitTime = 5
 	}
 	if err := conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(readWaitTime))); err != nil {
-		panic(err)
+		return nil, err
 	}
 	reader := bufio.NewReader(conn)
 
@@ -118,7 +118,7 @@ func (t *Client) read(conn net.Conn, readWaitTime int) ([]byte, error) {
 	lenBuf := make([]byte, 4)
 	_, err := reader.Read(lenBuf)
 	if err != nil {
-		return []byte(""), err
+		return nil, err
 	}
 	packetLen := binary.BigEndian.Uint32(lenBuf)
 
