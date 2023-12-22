@@ -11,81 +11,120 @@ import (
 )
 
 type Client struct {
-	network, address   string
-	initialCap, maxCap int
-	idBuilder          func() any
-	pool               pool.Pool
+	config Config
+	pool   pool.Pool
 }
 
-func NewClient(network, address string, initialCap, maxCap int, idBuilder func() any) *Client {
+type Config struct {
+	Network       string
+	Address       string
+	InitialCap    int
+	MaxCap        int
+	ConnTimeOut   int
+	ReadWaitTime  int
+	WriteWaitTime int
+	IdBuilder     func() any
+}
+
+func NewClient(c Config) *Client {
 	factory := func() (net.Conn, error) {
-		return net.Dial(network, address)
+		return net.DialTimeout(c.Network, c.Address, time.Duration(c.ConnTimeOut)*time.Second)
 	}
-	p, err := pool.NewChannelPool(initialCap, maxCap, factory)
+	if c.InitialCap == 0 {
+		c.InitialCap = 5
+	}
+	if c.MaxCap == 0 {
+		c.MaxCap = 30
+	}
+	//if c.IdBuilder == nil {
+	//	panic(errors.New("IdBuilder can not be nil"))
+	//}
+	p, err := pool.NewChannelPool(c.InitialCap, c.MaxCap, factory)
 	if err != nil {
 		panic(err)
 	}
 	return &Client{
-		network:    network,
-		address:    address,
-		initialCap: initialCap,
-		maxCap:     maxCap,
-		idBuilder:  idBuilder,
-		pool:       p,
+		config: c,
+		pool:   p,
 	}
 }
 
-func (t *Client) Call(method string, params map[string]any, readWaitTime int) (data []byte, err error) {
+func (t *Client) CallWithTime(id any, method string, params map[string]any, readWaitTime, writeWaitTime int) []byte {
 	var conn net.Conn
-	var connErr error
-	conn, connErr = t.pool.Get()
-	if connErr != nil {
-		return nil, connErr
+	var poolGetErr error
+
+	conn, poolGetErr = t.pool.Get()
+	if poolGetErr != nil {
+		panic(poolGetErr)
 	}
 	defer conn.Close()
+
 	callData := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  method,
 		"params":  params,
-		"id":      t.idBuilder(),
+		"id":      id,
 	}
 	json, err := di.Json().Marshal(callData)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	sendErr := t.sendResponse(conn, json)
+	sendErr := t.send(conn, json, writeWaitTime)
 	if sendErr != nil {
-		conn, connErr = t.pool.Get()
-		if connErr != nil {
-			return nil, connErr
-		}
+		t.closeConn(conn)
+		conn = t.getNewConn()
 		defer conn.Close()
-		sendErr2 := t.sendResponse(conn, json)
+		sendErr2 := t.send(conn, json, writeWaitTime)
 		if sendErr2 != nil {
-			return nil, sendErr2
+			panic(sendErr2)
 		}
 	}
 
 	data, readErr := t.read(conn, readWaitTime)
 	if readErr != nil {
-		return nil, readErr
+		panic(readErr)
 	}
-
-	return data, nil
+	return data
 }
 
-func (t *Client) sendResponse(conn net.Conn, res []byte) error {
-	waitTime := 5
+func (t *Client) Call(id any, method string, params map[string]any) []byte {
+	return t.CallWithTime(id, method, params, 0, 0)
+}
+
+func (t *Client) getNewConn() net.Conn {
+	conn, err := net.Dial(t.config.Network, t.config.Address)
+	if err != nil {
+		panic(conn)
+	}
+	return conn
+}
+
+func (t *Client) closeConn(conn net.Conn) {
+	if pc, ok := conn.(*pool.PoolConn); ok {
+		pc.MarkUnusable()
+		pc.Close()
+	} else {
+		conn.Close()
+	}
+}
+
+func (t *Client) send(conn net.Conn, content []byte, waitTime int) error {
+	if waitTime == 0 {
+		waitTime = t.config.WriteWaitTime
+	}
+	if waitTime == 0 {
+		waitTime = 5
+	}
 	if err := conn.SetWriteDeadline(time.Now().Add(time.Second * time.Duration(waitTime))); err != nil {
 		return err
 	}
 	// 先将长度作为header
 	returnlenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(returnlenBuf, uint32(len(res)))
+	binary.BigEndian.PutUint32(returnlenBuf, uint32(len(content)))
 
 	// 拼接长度和内容
-	data := append(returnlenBuf, res...)
+	data := append(returnlenBuf, content...)
 	//fmt.Println(string(d), len(d), len(data))
 
 	// 发送数据
@@ -96,20 +135,19 @@ func (t *Client) sendResponse(conn net.Conn, res []byte) error {
 		} else {
 			di.Zap().Debugf("conn write error: %v", err)
 		}
-		if pc, ok := conn.(*pool.PoolConn); ok {
-			pc.MarkUnusable()
-			pc.Close()
-		}
 		return err
 	}
 	return nil
 }
 
-func (t *Client) read(conn net.Conn, readWaitTime int) ([]byte, error) {
-	if readWaitTime == 0 {
-		readWaitTime = 5
+func (t *Client) read(conn net.Conn, waitTime int) ([]byte, error) {
+	if waitTime == 0 {
+		waitTime = t.config.ReadWaitTime
 	}
-	if err := conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(readWaitTime))); err != nil {
+	if waitTime == 0 {
+		waitTime = 5
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(waitTime))); err != nil {
 		return nil, err
 	}
 	reader := bufio.NewReader(conn)

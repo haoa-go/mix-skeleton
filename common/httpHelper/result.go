@@ -4,6 +4,7 @@ type Result struct {
 	Code int32
 	Msg  string
 	Data any
+	Flag bool
 }
 
 func Error(msg string, code int32, data any) Result {
@@ -14,6 +15,7 @@ func Error(msg string, code int32, data any) Result {
 		Code: code,
 		Msg:  msg,
 		Data: data,
+		Flag: false,
 	}
 }
 
@@ -28,5 +30,6 @@ func Success(msg string, code int32, data any) Result {
 		Code: code,
 		Msg:  msg,
 		Data: data,
+		Flag: true,
 	}
 }
